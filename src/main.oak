@@ -1,0 +1,73 @@
+std := import('std')
+str := import('str')
+
+{ CowNode: CowNode } := import('node')
+{ CowError: CowError } := import('util')
+static := import('static')
+
+fn Soak(Env) Ctx := {
+  Env: Env |> std.default(static.Env)
+  read: fn read(k) Env.(k)
+  assg: fn assg(k, v) Env.(k) <- v
+  dele: fn dele(k) assg(k, ?)
+
+  Stack: []
+  add: fn add(v) Ctx.Stack << v
+  pop: fn pop() {
+    lastItem := Ctx.Stack.(len(Ctx.Stack) - 1)
+    Ctx.Stack <- std.take(Ctx.Stack, len(Ctx.Stack) - 1)
+
+    lastItem
+  }
+
+  Steps: []
+  stepToNode: fn stepToNode(step) CowNode(step...)
+
+  load: fn load(CowSteps) Ctx.Steps <- std.map(CowSteps, stepToNode)
+  pack: fn pack with std.map(Ctx.Steps) fn(e) e.pack()
+
+  _parseInstruction: fn _parseInstruction(item) {
+    items := item.code |> str.split(' ')
+
+    operation := Ctx.Env.(items.0 |> str.lower())
+    args := items |> std.slice(1)
+
+    if operation |> type() {
+      :function -> operation(Ctx, {
+        args: args
+        item: item
+        items: items
+      })
+
+      :null -> CowError('ParseError', 'Invalid instruction!', items.0, Ctx.Stack).throw()
+    }
+  }
+
+  // ---
+
+  _jitStand: fn _jitStand(item) {
+    next := item.next(Ctx.Steps)
+    if next != ? -> _jitStep(next)
+  }
+
+  _jitStep: fn _jitStep(item) {
+    _parseInstruction(item)
+    _jitStand(item)
+  }
+
+  _jitFirstStep: fn _jitFirstStep {
+    // We start at Register 0
+    item := with std.find(Ctx.Steps) fn(step) step.thisReg = 0
+    if item = -1 -> CowError('JIT', 'Failed to find first step!', pack(), Ctx.Stack).throw()
+
+    Ctx.Steps.(item)
+  }
+
+  jit: fn jit {
+    _jitFirstStep() |> _jitStep()
+
+    // Return last stack item
+    Ctx.Stack.(Ctx.Stack |> len() - 1)
+  }
+
+}

@@ -1,0 +1,11 @@
+function customExp(x, terms = 20) {
+    let result = 1.0; // First term of the series
+    let term = 1.0;
+
+    for (let i = 1; i < terms; i++) {
+        term *= x / i;
+        result += term;
+    }
+
+    return result;
+}

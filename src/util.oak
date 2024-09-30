@@ -1,0 +1,16 @@
+std := import('std')
+fmt := import('fmt')
+
+fn CowError(name, message, cause, stack) { Ctx := {
+  name: name |> std.default('')
+  cause: cause |> std.default(?)
+  stack: stack |> std.default('')
+  message: message |> std.default('')
+
+  throw: fn(args...) {
+    with std.println() '{{0}} -> {{1}}:' |> fmt.format(Ctx.name, Ctx.message)
+    std.println(' ', Ctx.cause)
+    std.println(' ', Ctx.stack)
+    exit(1)
+  }
+}}

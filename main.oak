@@ -1,0 +1,19 @@
+std := import('std')
+str := import('str')
+
+{ Soak: Soak } := import('src/main')
+
+// ---
+
+test := [
+  ['# 6', 0, 1]
+  ['# 6', 1, 2]
+  ['pow 6', 2, 3]
+]
+
+// ---
+
+env := Soak()
+env.load(test)
+env.jit() |> std.println()
+env.Stack |> std.println()

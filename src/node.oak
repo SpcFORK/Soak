@@ -1,0 +1,47 @@
+std := import('std')
+
+fn CowNode(code, thisReg, nextReg) Ctx := {
+  thisReg: thisReg |> std.default(0)
+  nextReg: nextReg |> std.default(0)
+  code: code |> std.default('')
+
+  // ---
+
+  pack: fn pack [Ctx.code, Ctx.thisReg, Ctx.nextReg]
+
+  // ---
+
+  _Next: fn _Next(step) step.thisReg = Ctx.nextReg
+  _Last: fn _Last(step) step.nextReg = Ctx.thisReg
+
+  _hasStep: fn _hasStep(steps, mutator) std.find(steps, mutator)
+
+  _updateStep: fn _updateStep(steps, key, mutator) if Ctx.(key) {
+    ? -> Ctx.(key) <- steps.(_hasStep(steps, mutator))
+    _ -> Ctx.(key)
+  }
+
+  _findStep: fn _findStep(steps, key, mutator) {
+    _updateStep(steps, key, mutator)
+    Ctx.(key)
+  }
+
+  _nextStep?: ?
+  _lastStep?: ?
+
+  // ---
+
+  hasNext: fn hasNext(steps) _hasStep(steps, _Next)
+  hasLast: fn hasLast(steps) _hasStep(steps, _Last)
+
+  next: fn next(steps) _findStep(steps, '_nextStep?', _Next)
+  last: fn last(steps) _findStep(steps, '_lastStep?', _Last)
+
+  // ---
+
+  cache: fn cache(steps) [next(), last()]
+
+  uncacheNext: fn uncacheNext Ctx._nextStep? <- ?
+  uncacheLast: fn uncacheLast Ctx._lastStep? <- ?
+  uncache: fn uncache { uncacheNext(), uncacheLast() }
+}

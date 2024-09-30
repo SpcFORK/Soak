@@ -1,0 +1,219 @@
+std := import('std')
+str := import('str')
+math := import('math')
+
+lower := 'abcdefghijklmnopqrstuvwxyz'
+upper := 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+numbers := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+symbl := '#$%&*+-./:<=>?@^_`{|}~'
+
+bools := [false, true]
+
+chars := lower + upper + (numbers |> std.map(string) |> str.join('')) + symbl
+
+// ---
+
+fn prim(ctx, obj) obj.(ctx.args.0 |> int()) |> ctx.Soak.add()
+
+// ---
+
+Prims := {
+  't': fn(s, c) true |> s.add()
+  'f': fn(s, c) false |> s.add()
+  '#': fn(s, c) c.args.0 |> int() |> s.add()
+  '$': fn(s, c) c.args.0 |> s.add()
+
+  'c-b': fn(s, c) prim(c, bools)
+
+  'c-lw': fn(s, c) prim(c, lower)
+  'c-up': fn(s, c) prim(c, upper)
+  'c-al': fn(s, c) len(lower) |> s.add()
+
+  'c-nm': fn(s, c) prim(c, numbers)
+  'c-nl': fn(s, c) len(numbers) |> s.add()
+
+  'c-sy': fn(s, c) prim(c, symbl)
+  'c-sl': fn(s, c) len(symbl) |> s.add()
+
+  'c-cs': fn(s, c) prim(c, chars)
+  'c-cl': fn(s, c) len(chars) |> s.add()
+
+  _ioarg: fn _ioarg(s, c, i, h) if val := c.args.(i) {
+    ? -> s.pop()
+    _ -> val |> std.default(h, string)()
+  }
+}
+
+Adding := {
+  qadd: fn(s, c) s.add(s.pop() + s.pop())
+
+  add: fn(s, c) s.add(
+    _ioarg(s, c, 0) + _ioarg(s, c, 1)
+  )
+}
+
+Subtr := {
+  qsub: fn(s, c) s.add(s.pop() - s.pop())
+
+  sub: fn(s, c) s.add(
+    _ioarg(s, c, 0) - _ioarg(s, c, 1)
+  )
+}
+
+Mult := {
+  qmlt: fn(s, c) s.add(s.pop() * s.pop())
+
+  mult: fn(s, c) s.add(
+    _ioarg(s, c, 0) * _ioarg(s, c, 1)
+  )
+
+  _qd_b4: fn _qd_b4(x) x |> pow(2) / 4
+  _hkmlt: fn _hkmlt(a, b) _qd_b4(a + b) - _qd_b4(a - b)
+
+  qhkmlt: fn(s, c) _hkmlt(s.pop(), s.pop()) |> s.add()
+  hkmlt: fn(s, c) _hkmlt(
+    _ioarg(s, c, 0)
+    _ioarg(s, c, 1)
+  ) |> s.add()
+}
+
+Div := {
+  div: fn(s, c) s.add(
+    _ioarg(s, c, 0) / _ioarg(s, c, 1)
+  )
+
+  _exp: fn _exp(x) pow(math.E, x)
+  exp: fn(s, c) s.add(s.pop() |> _exp())
+
+  _qdiv: fn _qdiv(a, b) {
+    _exp(log(a) - log(b))
+  }
+
+  hkdiv: fn(s, c) _qdiv(
+    _ioarg(s, c, 0)
+    _ioarg(s, c, 1)
+  ) |> s.add()
+
+  qhkdiv: fn(s, c) _qdiv(
+    s.pop()
+    s.pop()
+  ) |> s.add()
+}
+
+Pow := {
+  pow: fn(s, c) s.add(
+    _ioarg(s, c, 0) |> pow(_ioarg(s, c, 1))
+  )
+
+  qpow: fn(s, c) s.add(
+    s.pop() |> pow(s.pop())
+  )
+
+  _hkpow: fn _hkpow(a, b) if b {
+    0 -> 1
+    _ -> _hkmlt(a, _hkpow(a, b - 1))
+  }
+
+  qhkpow: fn(s, c) _hkpow(s.pop(), s.pop()) |> s.add()
+
+  hkpow: fn(s, c) _hkpow(
+    _ioarg(s, c, 0)
+    _ioarg(s, c, 1)
+  ) |> s.add()
+}
+
+Math := std.merge(
+  Adding
+  Subtr
+  Mult
+  Div
+  Pow
+)
+
+StringOps := {
+  concat: fn(s, c) s.add(
+    _ioarg(s, c, 0, string) + _ioarg(s, c, 1, string)
+  )
+
+  substr: fn(s, c) {
+    str := _ioarg(s, c, 0, string)
+    start := _ioarg(s, c, 1, int)
+    end := _ioarg(s, c, 2, int)
+    s.add(str.substring(start, end))
+  }
+
+  length: fn(s, c) s.add(
+    len(_ioarg(s, c, 0, string))
+  )
+}
+
+ListOps := {
+  map: fn(s, c) {
+    list := _ioarg(s, c, 0)
+    fn := s.pop()
+    s.add(std.map(list, fn))
+  }
+
+  filter: fn(s, c) {
+    list := _ioarg(s, c, 0)
+    fn := s.pop()
+    s.add(std.filter(list, fn))
+  }
+
+  reduce: fn(s, c) {
+    list := _ioarg(s, c, 0)
+    fn := s.pop()
+    initial := _ioarg(s, c, 1)
+    s.add(std.reduce(list, fn, initial))
+  }
+}
+
+ControlFlow := {
+  if: fn(s, c) {
+    condition := s.pop()
+    true_branch := s.pop()
+    false_branch := s.pop()
+    result := if condition {
+      true -> true_branch()
+      _ -> false_branch()
+    }
+    s.add(result)
+  }
+
+  loop: fn(s, c) {
+    condition := s.pop()
+    body := s.pop()
+    while condition() {
+      body()
+    }
+  }
+}
+
+Memoization := {
+  _cache: {}
+
+  memoize: fn(s, c) {
+    fn := s.pop()
+    memoized := fn(args...) {
+      key := str.join(',', args)
+      if Memoization._cache.(key) {
+        ? -> {
+          result := fn(args...)
+          Memoization._cache.(key) <- result
+          result
+        }
+        cached -> cached
+      }
+    }
+    s.add(memoized)
+  }
+
+  clear_cache: fn(s, c) {
+    Memoization._cache <- {}
+  }
+}
+
+Env := std.merge(Prims, Math, {
+  
+})
