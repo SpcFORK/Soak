@@ -1,9 +1,10 @@
 std := import('std')
 str := import('str')
+cli := import('cli')
 
+static := import('static')
 { CowNode: CowNode } := import('node')
 { CowError: CowError } := import('util')
-static := import('static')
 
 fn Soak(Env) Ctx := {
   Env: Env |> std.default(static.Env)
@@ -11,8 +12,14 @@ fn Soak(Env) Ctx := {
   assg: fn assg(k, v) Env.(k) <- v
   dele: fn dele(k) assg(k, ?)
 
+  // ---
+  // @@ Stack
+
   Stack: []
   add: fn add(v) Ctx.Stack << v
+  ins: fn ins(v) with std.append([v]) Ctx.Stack
+  peek: fn peek() Ctx.Stack.(len(Ctx.Stack) - 1)
+
   pop: fn pop() {
     lastItem := Ctx.Stack.(len(Ctx.Stack) - 1)
     Ctx.Stack <- std.take(Ctx.Stack, len(Ctx.Stack) - 1)
@@ -20,28 +27,96 @@ fn Soak(Env) Ctx := {
     lastItem
   }
 
+  shuf: fn shuf() {
+    // L -> F
+    pop() |> ins()
+  }
+
+  rshuf: fn rshuf() {
+    // F -> L
+    shift() |> add()
+  }
+
+  shift: fn shift() {
+    firstItem := Ctx.Stack.0
+    Ctx.Stack <- std.slice(Ctx.Stack, 1)
+
+    firstItem
+  }
+
+  drop: fn drop() {
+    Ctx.Stack <- std.take(Ctx.Stack, len(Ctx.Stack) - 1)
+  }
+
+  dup: fn dup() Ctx.Stack << peek()
+
+  swap: fn swap() {
+    topItem := pop()
+    secondItem := pop()
+    add(topItem)
+    add(secondItem)
+  }
+
+  over: fn over() {
+    secondItem := Ctx.Stack.(len(Ctx.Stack) - 2)
+    Ctx.Stack << secondItem
+  }
+
+  rot: fn rot() { // cba -> acb
+    a := pop()
+    b := pop()
+    c := pop()
+    add(a)
+    add(c)
+    add(b)
+  }
+
+  rotcc: fn rotcc() { // cba -> bac
+    a := pop()
+    b := pop()
+    c := pop()
+    add(b)
+    add(a)
+    add(c)
+  }
+
+  // ---
+  // @@ Steps
+
   Steps: []
+  clr: fn clr() Ctx.Steps <- []
   stepToNode: fn stepToNode(step) CowNode(step...)
 
   load: fn load(CowSteps) Ctx.Steps <- std.map(CowSteps, stepToNode)
   pack: fn pack with std.map(Ctx.Steps) fn(e) e.pack()
 
+  _getInst: fn _getInst(i) Ctx.Env.(i |> str.lower())
+
   _parseInstruction: fn _parseInstruction(item) {
     items := item.code |> str.split(' ')
 
-    operation := Ctx.Env.(items.0 |> str.lower())
+    operation := _getInst(items.0)
     args := items |> std.slice(1)
 
     if operation |> type() {
       :function -> operation(Ctx, {
         args: args
-        item: item
         items: items
+        item: item
       })
 
       :null -> CowError('ParseError', 'Invalid instruction!', items.0, Ctx.Stack).throw()
     }
   }
+
+  // ---
+  // @@ Registry
+
+  Registry: {}
+  setVar: fn setVar(register, value) {
+    Ctx.Registry.(register) <- value
+  }
+  delVar: fn delVar(register, value) setVar(register, ?)
 
   // ---
 
@@ -70,4 +145,87 @@ fn Soak(Env) Ctx := {
     Ctx.Stack.(Ctx.Stack |> len() - 1)
   }
 
+  loJit: fn loJit(CowSteps) {
+    load(CowSteps)
+    jit()
+  }
+  newLoJit: fn newLoJit(CowSteps) Soak().loJit(CowSteps)
+
+}
+
+// ---
+// @@ CLI
+
+Cli := cli.parse()
+
+if Cli.verb {
+  fn CliFull {
+    codes := []
+    args := Cli.args |> std.clone()
+
+    fn recurse() {
+      codes << [
+        args.2
+        args.0 |> int()
+        args.1 |> int()
+      ]
+
+      args <- std.takeLast(args, len(args) - 3)
+      if len(args) >= 3 -> recurse()
+    }
+
+    recurse()
+
+    with std.println() Soak().newLoJit(codes)
+  }
+
+  fn CliSemi {
+    codes := []
+    args := Cli.args |> std.clone()
+
+    x := 0
+    z := 0
+
+    fn recurse() {
+      codes << [
+        args.0
+        x <- z
+        z <- z + 1
+      ]
+
+      args <- std.takeLast(args, len(args) - 1)
+      if len(args) >= 1 -> recurse()
+    }
+
+    recurse()
+
+    with std.println() Soak().newLoJit(codes)
+  }
+
+  fn CliInputSemi {
+    codes := []
+    ctx := Soak()
+
+    x := 0
+    z := 0
+
+    with std.loop() fn(i, break) {
+      std.print('(esc to leave) > ')
+      evt := input()
+      if evt.data |> str.lower() {
+        'esc' -> break(0)
+        _ -> [evt.data, 0, 1] |>
+          ctx.stepToNode() |>
+          ctx._parseInstruction() |>
+          std.println()
+      }
+    }
+
+    std.println('Ended Repl session.')
+  }
+
+  'srepl' -> CliInputSemi()
+
+  'full' -> CliFull()
+  'semi' -> CliSemi()
 }

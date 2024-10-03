@@ -1,0 +1,39 @@
+std := import('std')
+
+fn MemCache Ctx := {
+  store: []
+
+  addCtx: fn addCtx(NewCx) Ctx.store << [NewCx, {}]
+  hasCtxAt: fn hasCtxAt(Cx) with std.find(Ctx.store) fn(store) store.0 = Cx
+
+  getCtx: fn getCtx(Cx) Ctx.store.(hasCtxAt(Cx))
+  updateCtx: fn updateCtx(Cx, NewData) Ctx.store.(hasCtxAt(Cx)) <- [Cx, NewData]
+
+  setKey: fn setKey(Cx, Key, Value) {
+    ind := hasCtxAt(Cx)
+    if ind != -1 -> (Ctx.store.(ind).1).(Key) <- Value
+  }
+
+  getKey: fn getKey(Cx, Key) {
+    ind := hasCtxAt(Cx)
+    if ind != -1 -> (Ctx.store.(ind).1).(Key)
+  }
+
+  hasKey: fn hasKey(Cx, Key) {
+    ind := hasCtxAt(Cx)
+    if ind != -1 -> 
+      Ctx.store.(ind).1 |>
+      keys() |> 
+      with std.find() fn(i) i = Key
+  }
+
+  delCtx: fn delCtx(Cx) {
+    ind := hasCtxAt(Cx)
+    Ctx.store <- std.merge(
+      Ctx.store |> std.slice(0, ind - 1)
+      Ctx.store |> std.slice(ind + 1)
+    )
+  }
+
+  gc: fn() Ctx.store <- []
+}

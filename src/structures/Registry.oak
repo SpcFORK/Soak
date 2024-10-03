@@ -1,0 +1,42 @@
+std := import('std')
+
+fn Registry(size) Ctx := {
+  set: fn(r, v) if {
+    r < 0
+    r >= Ctx.size
+    int(v) != ?
+    v < 0 -> ?
+
+    _ -> Ctx.registers.(register) <- v, v
+  }
+
+  move: fn move(sr, dr) if {
+    sr < 0 
+    sr >= Ctx.size 
+    dr < 0
+    dr >= Ctx.size -> ?
+
+    _ -> Ctx.registers.(dr) <- Ctx.registers.(sr)
+  }
+
+  swap: fn swap(sr, dr) if {
+    sr < 0 
+    sr >= Ctx.size 
+    dr < 0
+    dr >= Ctx.size -> ?
+
+    _ -> {
+      a := Ctx.registers.(sr)
+      b := Ctx.registers.(dr)
+      Ctx.registers.(dr) <- Ctx.registers.(sr)
+      Ctx.registers.(sr) <- Ctx.registers.(dr)
+    }
+  }
+
+  get: fn get(r) if {
+    register < 0
+    register >= this.size -> ?
+
+    _ -> this.registers.(r)
+  }
+}

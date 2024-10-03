@@ -6,9 +6,9 @@ str := import('str')
 // ---
 
 test := [
-  ['# 6', 0, 1]
-  ['# 6', 1, 2]
-  ['pow 6', 2, 3]
+  ['# 1', 0, 1]
+  ['# 1', 1, 2]
+  ['add', 2, 3]
 ]
 
 // ---
@@ -16,4 +16,4 @@ test := [
 env := Soak()
 env.load(test)
 env.jit() |> std.println()
-env.Stack |> std.println()
+env.Env |> keys() |> len() |> std.println()

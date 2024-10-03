@@ -2,6 +2,8 @@ std := import('std')
 str := import('str')
 math := import('math')
 
+{ MemCache: MemCache } := import('structures/MemCache')
+
 lower := 'abcdefghijklmnopqrstuvwxyz'
 upper := 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
@@ -13,6 +15,9 @@ bools := [false, true]
 chars := lower + upper + (numbers |> std.map(string) |> str.join('')) + symbl
 
 // ---
+// http://www.ffd2.com/fridge/
+// https://alg-d.com/other/sin.html
+// ---
 
 fn prim(ctx, obj) obj.(ctx.args.0 |> int()) |> ctx.Soak.add()
 
@@ -21,8 +26,22 @@ fn prim(ctx, obj) obj.(ctx.args.0 |> int()) |> ctx.Soak.add()
 Prims := {
   't': fn(s, c) true |> s.add()
   'f': fn(s, c) false |> s.add()
+  
   '#': fn(s, c) c.args.0 |> int() |> s.add()
   '$': fn(s, c) c.args.0 |> s.add()
+
+  '@': fn Goto(s, c) c.item.nextReg <- c.args.0 |> int()
+  '^': fn(s, c) fn() Goto(s, c)
+
+  'cll': fn(s, c) {
+    // Expect a function name, and arguements if so;
+    // If an arg is *, replace with a stac item;
+    // We do this for interop;
+    name := _ioarg(s, c, 0, ?, Ctx.peek)
+    
+  }
+
+  // ---
 
   'c-b': fn(s, c) prim(c, bools)
 
@@ -39,17 +58,38 @@ Prims := {
   'c-cs': fn(s, c) prim(c, chars)
   'c-cl': fn(s, c) len(chars) |> s.add()
 
-  _ioarg: fn _ioarg(s, c, i, h) if val := c.args.(i) {
-    ? -> s.pop()
+  // ---
+
+  _ioarg: fn _ioarg(s, c, i, h, p) if val := c.args.(i) {
+    ? -> s.(std.default(p, 'pop'))()
     _ -> val |> std.default(h, string)()
   }
 }
 
+Stack := {
+  drop: fn(s, c) s.drop()
+  dup: fn(s, c) s.dup()
+  swap: fn(s, c) s.swap()
+  over: fn(s, c) s.over()
+  rot: fn(s, c) s.rot()
+  rotcc: fn(s, c) s.rotcc()
+  shuf: fn(s, c) s.shuf()
+  rshuf: fn(s, c) s.rshuf()
+}
+
+// ---
+// @@ Math
+
 Adding := {
   qadd: fn(s, c) s.add(s.pop() + s.pop())
 
+  _intOrFloat: fn _intOrFloat(v) if v := int(v) {
+    ? -> float(v)
+    _ -> v
+  }
+
   add: fn(s, c) s.add(
-    _ioarg(s, c, 0) + _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat) + _ioarg(s, c, 1, _intOrFloat)
   )
 }
 
@@ -57,15 +97,15 @@ Subtr := {
   qsub: fn(s, c) s.add(s.pop() - s.pop())
 
   sub: fn(s, c) s.add(
-    _ioarg(s, c, 0) - _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat) - _ioarg(s, c, 1, _intOrFloat)
   )
 }
 
 Mult := {
   qmlt: fn(s, c) s.add(s.pop() * s.pop())
 
-  mult: fn(s, c) s.add(
-    _ioarg(s, c, 0) * _ioarg(s, c, 1)
+  mlt: fn(s, c) s.add(
+    _ioarg(s, c, 0, _intOrFloat) * _ioarg(s, c, 1, _intOrFloat)
   )
 
   _qd_b4: fn _qd_b4(x) x |> pow(2) / 4
@@ -73,14 +113,14 @@ Mult := {
 
   qhkmlt: fn(s, c) _hkmlt(s.pop(), s.pop()) |> s.add()
   hkmlt: fn(s, c) _hkmlt(
-    _ioarg(s, c, 0)
-    _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat)
+    _ioarg(s, c, 1, _intOrFloat)
   ) |> s.add()
 }
 
 Div := {
   div: fn(s, c) s.add(
-    _ioarg(s, c, 0) / _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat) / _ioarg(s, c, 1, _intOrFloat)
   )
 
   _exp: fn _exp(x) pow(math.E, x)
@@ -91,8 +131,8 @@ Div := {
   }
 
   hkdiv: fn(s, c) _qdiv(
-    _ioarg(s, c, 0)
-    _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat)
+    _ioarg(s, c, 1, _intOrFloat)
   ) |> s.add()
 
   qhkdiv: fn(s, c) _qdiv(
@@ -103,7 +143,7 @@ Div := {
 
 Pow := {
   pow: fn(s, c) s.add(
-    _ioarg(s, c, 0) |> pow(_ioarg(s, c, 1))
+    _ioarg(s, c, 0, _intOrFloat) |> pow(_ioarg(s, c, 1, _intOrFloat))
   )
 
   qpow: fn(s, c) s.add(
@@ -118,9 +158,163 @@ Pow := {
   qhkpow: fn(s, c) _hkpow(s.pop(), s.pop()) |> s.add()
 
   hkpow: fn(s, c) _hkpow(
-    _ioarg(s, c, 0)
-    _ioarg(s, c, 1)
+    _ioarg(s, c, 0, _intOrFloat)
+    _ioarg(s, c, 1, _intOrFloat)
   ) |> s.add()
+}
+
+// ---
+// @@ Advanced
+
+Mod := {
+  qmod: fn(s, c) s.add(s.pop() % s.pop())
+
+  mod: fn(s, c) s.add(
+    _ioarg(s, c, 0) % _ioarg(s, c, 1)
+  )
+}
+
+Trig := {
+  sin: fn(s, c) s.add(sin(_ioarg(s, c, 0, _intOrFloat)))
+  qsin: fn(s, c) s.add(sin(s.pop()))
+
+  cos: fn(s, c) s.add(cos(_ioarg(s, c, 0, _intOrFloat)))
+  qcos: fn(s, c) s.add(cos(s.pop()))
+
+  tan: fn(s, c) s.add(tan(_ioarg(s, c, 0, _intOrFloat)))
+  qtan: fn(s, c) s.add(tan(s.pop()))
+}
+
+Sqrt := {
+  qsqrt: fn(s, c) s.add(
+    s.pop() |> math.sqrt()
+  )
+
+  sqrt: fn(s, c) s.add(
+    math.sqrt(_ioarg(s, c, 0, _intOrFloat))
+  )
+
+  _hksqrt: fn _hksqrt(n) if n >= 0 -> _hkpow(n, 0.5)
+  hksqrt: fn(s, c) s.add(
+    _hksqrt(_ioarg(s, c, 0, _intOrFloat))
+  )
+
+  qhksqrt: fn(s, c) s.add(
+    _hksqrt(s.pop())
+  )
+}
+
+Abs := {
+  abs: fn(s, c) s.add(
+    math.abs(_ioarg(s, c, 0, _intOrFloat))
+  )
+
+  qabs: fn(s, c) s.add(
+    math.abs(s.pop())
+  )
+
+  hkabs: fn(s, c) s.add(
+    _ioarg(s, c, 0, _intOrFloat) |> _hkpow(2) |> _hksqrt()
+  )
+
+  qhkabs: fn(s, c) s.add(
+    _hkpow(s.pop(), 2) |> _hksqrt()
+  )
+}
+
+Bitwise := {
+  band: fn(s, c) s.add(
+    _ioarg(s, c, 0, _intOrFloat) & _ioarg(s, c, 1, _intOrFloat)
+  )
+
+  qband: fn(s, c) s.add(
+    s.pop() & s.pop()
+  )
+
+  // ---
+
+  bor: fn(s, c) s.add(
+    _ioarg(s, c, 0, _intOrFloat) | _ioarg(s, c, 1, _intOrFloat)
+  )
+
+  qbor: fn(s, c) s.add(
+    s.pop() | s.pop()
+  )
+
+  // ---
+
+  bxor: fn(s, c) s.add(
+    _ioarg(s, c, 0, _intOrFloat) ^ _ioarg(s, c, 1, _intOrFloat)
+  )
+
+  qbxor: fn(s, c) s.add(
+    s.pop() ^ s.pop()
+  )
+
+  // ---
+
+  qlshift: fn(s, c) {
+    positions := s.pop()
+    value := s.pop()
+    result := value * pow(2, positions)
+    s.add(result)
+  }
+
+  lshift: fn(s, c) {
+    value := _ioarg(s, c, 0, _intOrFloat)
+    positions := _ioarg(s, c, 1, _intOrFloat)
+    result := value * pow(2, positions)
+    s.add(result)
+  }
+
+  qrshift: fn(s, c) {
+    positions := s.pop()
+    value := s.pop()
+    result := value / pow(2, positions)
+    s.add(result)
+  }
+
+  rshift: fn(s, c) {
+    value := _ioarg(s, c, 0, _intOrFloat)
+    positions := _ioarg(s, c, 1, _intOrFloat)
+    result := value / pow(2, positions)
+    s.add(result)
+  }
+
+  // ---
+
+  hklshift: fn(s, c) {
+    value := _ioarg(s, c, 0, _intOrFloat)
+    positions := _ioarg(s, c, 1, _intOrFloat)
+    result := _hkmlt(value, _hkpow(2, positions))
+    s.add(result)
+  }
+
+  qhklshift: fn(s, c) {
+    positions := s.pop()
+    value := s.pop()
+    result := _hkmlt(value, _hkpow(2, positions))
+    s.add(result)
+  }
+
+  hkrshift: fn(s, c) {
+    value := _ioarg(s, c, 0, _intOrFloat)
+    positions := _ioarg(s, c, 1, _intOrFloat)
+    result := value / _hkpow(2, positions)
+    s.add(result)
+  }
+
+  qhkrshift: fn(s, c) {
+    positions := s.pop()
+    value := s.pop()
+    result := value / _hkpow(2, positions)
+    s.add(result)
+  }
+}
+
+Hex := {
+  fromhex: fn(s, c) _ioarg(s, c, 0, string) |> std.fromHex() |> s.add()
+  tohex: fn(s, c) _ioarg(s, c, 0, int) |> std.toHex() |> s.add()
 }
 
 Math := std.merge(
@@ -129,11 +323,134 @@ Math := std.merge(
   Mult
   Div
   Pow
+
+  Mod
+  Trig
+  Sqrt
+  Abs
+  Bitwise
+  Hex
 )
+
+// ---
+// @@ Mechanics
+
+BoolOps := {
+  _bool: fn(a) if a {
+    true
+    1 -> true
+
+    false
+    0 -> false
+  }
+
+  eq: fn(s, c) s.add(
+    _ioarg(s, c, 0, _bool) = _ioarg(s, c, 1, _bool)
+  )
+
+  qeq: fn(s, c) s.add(
+    s.pop() = s.pop()
+  )
+
+  neq: fn(s, c) s.add(
+    _ioarg(s, c, 0, _bool) != _ioarg(s, c, 1, _bool)
+  )
+
+  qneq: fn(s, c) s.add(
+    s.pop() != s.pop()
+  )
+
+  not: fn(s, c) s.add(
+    !_ioarg(s, c, 0, _bool)
+  )
+
+  qnot: fn(s, c) s.add(
+    !s.pop()
+  )
+}
+
+MemOps := {
+  MemCache: MemCache()
+
+  mc_addctx: fn(s, c) {
+    newCtx := _ioarg(s, c, 0, string)
+    MemOps.MemCache.addCtx(newCtx)
+  }
+
+  mc_hasctx: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    s.add(MemOps.MemCache.hasCtxAt(ctx) != -1)
+  }
+
+  mc_getctx: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    s.add(MemOps.MemCache.getCtx(ctx))
+  }
+
+  mc_newctx: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    newData := s.pop()
+    MemOps.MemCache.updateCtx(ctx, newData)
+  }
+
+  mc_delctx: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    MemOps.MemCache.delCtx(ctx)
+  }
+
+  mc_gc: fn(s, c) {
+    MemOps.MemCache.gc()
+  }
+
+  mc_setkey: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    key := _ioarg(s, c, 1, string)
+    value := s.pop()
+    MemOps.MemCache.setKey(ctx, key, value)
+  }
+
+  mc_getkey: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    key := _ioarg(s, c, 1, string)
+    s.add(MemOps.MemCache.getKey(ctx, key))
+  }
+
+  mc_haskey: fn(s, c) {
+    ctx := _ioarg(s, c, 0, string)
+    key := _ioarg(s, c, 1, string)
+    s.add(MemOps.MemCache.hasKey(ctx, key) != null)
+  }
+
+  // ---
+  // @@ Registry
+
+  pick: fn(s, c) {
+    n := _ioarg(s, c, 0, int)
+    s.add(s.Stack.(len(s.Stack) - 1 - n))
+  }
+
+  store: fn(s, c) {
+    key := _ioarg(s, c, 0)
+    value := s.pop()
+    s.Registry.(key) <- value
+  }
+
+  load: fn(s, c) {
+    key := _ioarg(s, c, 0)
+    s.add(s.Registry.(key))
+  }
+}
+
+CastOps := {
+  toint: fn(s, c) s.add(_ioarg(s, c, 0) |> int())
+  tostr: fn(s, c) s.add(_ioarg(s, c, 0) |> string())
+  tobool: fn(s, c) s.add(_ioarg(s, c, 0) |> bool())
+  tofloat: fn(s, c) s.add(_ioarg(s, c, 0) |> float())
+}
 
 StringOps := {
   concat: fn(s, c) s.add(
-    _ioarg(s, c, 0, string) + _ioarg(s, c, 1, string)
+    _ioarg(s, c, 0, string) << _ioarg(s, c, 1, string)
   )
 
   substr: fn(s, c) {
@@ -151,61 +468,65 @@ StringOps := {
 ListOps := {
   map: fn(s, c) {
     list := _ioarg(s, c, 0)
-    fn := s.pop()
-    s.add(std.map(list, fn))
+    func := s.pop()
+    s.add(std.map(list, func))
   }
 
   filter: fn(s, c) {
     list := _ioarg(s, c, 0)
-    fn := s.pop()
-    s.add(std.filter(list, fn))
+    func := s.pop()
+    s.add(std.filter(list, func))
   }
 
   reduce: fn(s, c) {
     list := _ioarg(s, c, 0)
-    fn := s.pop()
+    func := s.pop()
     initial := _ioarg(s, c, 1)
-    s.add(std.reduce(list, fn, initial))
+    s.add(std.reduce(list, func, initial))
   }
 }
 
 ControlFlow := {
-  if: fn(s, c) {
+  'if': fn(s, c) {
     condition := s.pop()
     true_branch := s.pop()
     false_branch := s.pop()
+
     result := if condition {
       true -> true_branch()
       _ -> false_branch()
     }
+
     s.add(result)
   }
 
   loop: fn(s, c) {
     condition := s.pop()
     body := s.pop()
-    while condition() {
-      body()
-    }
+    std.loop(body)
   }
 }
 
 Memoization := {
   _cache: {}
 
+  _get_or_compute: fn _get_or_compute(key, func, args) if Memoization._cache.(key) {
+    ? -> func(args...)
+    cached -> cached
+  }
+
   memoize: fn(s, c) {
-    fn := s.pop()
-    memoized := fn(args...) {
+    func := s.pop()
+
+    fn memoized(args...) {
       key := str.join(',', args)
-      if Memoization._cache.(key) {
-        ? -> {
-          result := fn(args...)
-          Memoization._cache.(key) <- result
-          result
-        }
-        cached -> cached
-      }
+
+      result := _get_or_compute(key, func, args)
+      Memoization._cache.(key) <- result
+
+      result
     }
+
     s.add(memoized)
   }
 
@@ -214,6 +535,51 @@ Memoization := {
   }
 }
 
-Env := std.merge(Prims, Math, {
-  
-})
+Jump := {
+  jump: fn jump(s, c) c.item.nextReg <- _ioarg(s, c, 0, int)
+
+  jmif: fn(s, c) if _ioarg(s, c, 0, int, 'peek') {
+    false, 0 -> jump(s, c)
+  }
+
+  subrt: fn(s, c) {
+    index := with std.find(s.Steps) fn(step) step = _ioarg(s, c, 0, int)
+    s.Steps.(index) |> s._jitStep()
+  }
+}
+
+Importing := {
+  std: fn(s, c) {
+    module := _ioarg(s, c, 0, string)
+    imported := import(module)
+    s.add(imported)
+  }
+}
+
+PropAccess := {
+  access: fn access(s, c) {
+    obj := _ioarg(s, c, 0)
+    prop := _ioarg(s, c, 1, string)
+    s.add(obj.(prop))
+  }
+}
+
+Env := std.merge(
+  Prims
+  Math
+
+  BoolOps
+  StringOps
+  ListOps
+
+  CastOps
+  MemOps
+
+  Jump
+  ControlFlow
+
+  Memoization
+
+  Importing
+  PropAccess
+)

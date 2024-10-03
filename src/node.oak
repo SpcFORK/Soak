@@ -1,9 +1,13 @@
 std := import('std')
 
 fn CowNode(code, thisReg, nextReg) Ctx := {
-  thisReg: thisReg |> std.default(0)
-  nextReg: nextReg |> std.default(0)
   code: code |> std.default('')
+
+  thisReg: thisReg |> std.default(0)
+  nextReg: nextReg |> std.default(1)
+
+  // setThisReg: fn(v) Ctx.thisReg <- v
+  // setNextReg: fn(v) Ctx.nextReg <- v
 
   // ---
 
