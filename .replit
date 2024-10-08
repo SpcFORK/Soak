@@ -1,7 +1,8 @@
 hidden = [".config"]
 
 entrypoint = "main.oak"
-run = "oak main.oak"
+run = "oak main.oak; [ ! -d dist ] && mkdir dist && (bash bash.bash); node main.js"
+modules = ["nodejs-20"]
 
 [nix]
 channel = "stable-23_11"

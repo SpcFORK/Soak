@@ -1,10 +1,28 @@
 std := import('std')
 str := import('str')
+fmt := import('fmt')
 cli := import('cli')
 
+hlp := import('hlp')
 static := import('static')
 { CowNode: CowNode } := import('node')
 { CowError: CowError } := import('util')
+
+fn toBin(number) {
+  pl := ''
+
+  with std.loop() fn(amm, breaker) if number > 0 {
+    true -> {
+      pl <- (number |> int() % 2) |> string() + pl
+      number <- int(number / 2)
+    }
+
+    _ -> pl |> std.default('0') |> breaker()
+  }
+}
+
+fn fromBin(encodedNumber) str.split(encodedNumber) |>
+  with std.reduce(0) fn(acc, item, count) acc <- acc * 2 + int(item)
 
 fn Soak(Env) Ctx := {
   Env: Env |> std.default(static.Env)
@@ -117,6 +135,7 @@ fn Soak(Env) Ctx := {
     Ctx.Registry.(register) <- value
   }
   delVar: fn delVar(register, value) setVar(register, ?)
+  regGC: fn regGC Ctx.Registry <- {}
 
   // ---
 
@@ -150,6 +169,28 @@ fn Soak(Env) Ctx := {
     jit()
   }
   newLoJit: fn newLoJit(CowSteps) Soak().loJit(CowSteps)
+
+  _encodeArr: fn _encodeArr(arr) with std.map(arr) fn(v) v |>
+    codepoint() |>
+    toBin() |>
+    str.padStart(8, '0')
+
+  compile: fn {
+    // The goal of compile is to oredr
+    result := ''
+
+    with std.map(Ctx.Steps |> std.values()) fn(step) result <<
+      '{{0}} {{1}} {{2}}\n' |> fmt.format(
+        step.thisReg
+        step.nextReg
+        step.code
+      )
+
+    result |>
+      str.split('') |>
+      std.map(_encodeArr) |>
+      str.join('')
+  }
 
 }
 
@@ -203,11 +244,7 @@ if Cli.verb {
   }
 
   fn CliInputSemi {
-    codes := []
     ctx := Soak()
-
-    x := 0
-    z := 0
 
     with std.loop() fn(i, break) {
       std.print('(esc to leave) > ')
@@ -229,3 +266,5 @@ if Cli.verb {
   'full' -> CliFull()
   'semi' -> CliSemi()
 }
+
+hlp.export!({ Soak: Soak }, 'Soak')

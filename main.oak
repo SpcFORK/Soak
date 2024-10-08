@@ -1,19 +1,30 @@
 std := import('std')
 str := import('str')
+dt := import('datetime')
 
 { Soak: Soak } := import('src/main')
 
 // ---
 
+t := time()
+
 test := [
   ['# 1', 0, 1]
   ['# 1', 1, 2]
-  ['add', 2, 3]
+  ['hksqr', 2, 3]
 ]
 
 // ---
 
 env := Soak()
 env.load(test)
+
 env.jit() |> std.println()
-env.Env |> keys() |> len() |> std.println()
+std.println()
+std.println('---')
+env.Env |> keys() |> len() |> std.println('is the amm of made ops!')
+
+nt := time()
+
+with std.println() nt - t
+with std.println() env.compile()

@@ -1,6 +1,19 @@
 std := import('std')
 str := import('str')
+json := import('json')
 math := import('math')
+
+// ---
+// @@ Tables
+{
+  exp: exp
+  qdiv: qdiv
+  qd_b4: qd_b4
+  hkmlt: hkmlt
+  p2tableLook: hksqr
+  p3tableLook: hkcub
+} := import('tables/p2')
+// ---
 
 { MemCache: MemCache } := import('structures/MemCache')
 
@@ -21,24 +34,54 @@ chars := lower + upper + (numbers |> std.map(string) |> str.join('')) + symbl
 
 fn prim(ctx, obj) obj.(ctx.args.0 |> int()) |> ctx.Soak.add()
 
+fn leftShift(value, positions) value * pow(2, positions)
+fn rightShift(value, positions) value / pow(2, positions)
+
 // ---
+
+Spawning := {
+  exec: fn(s, c) exec(
+    _ioarg(s, c, 0, string)
+    s.Stack
+  )
+}
+
+ReturnAddr := {
+  addr: -1
+
+  '?>': fn addRetAddr(s, c) s.add(ReturnAddr.addr)
+  '?!': fn hasRetAddr(s, c) ReturnAddr.addr |> math.sign() |> _bool()
+  '?:': fn setRetAddr(s, c) ReturnAddr.addr <- c.args.0
+
+  '(?)': fn addReturner(s, c) {
+    cAddr := ReturnAddr.addr
+    with s.add() fn() c.item.nextReg <- cAddr
+  }
+}
 
 Prims := {
   't': fn(s, c) true |> s.add()
   'f': fn(s, c) false |> s.add()
-  
+
   '#': fn(s, c) c.args.0 |> int() |> s.add()
   '$': fn(s, c) c.args.0 |> s.add()
 
-  '@': fn Goto(s, c) c.item.nextReg <- c.args.0 |> int()
-  '^': fn(s, c) fn() Goto(s, c)
+  '()': fn(s, c) s.add(fn {})
 
-  'cll': fn(s, c) {
-    // Expect a function name, and arguements if so;
-    // If an arg is *, replace with a stac item;
-    // We do this for interop;
-    name := _ioarg(s, c, 0, ?, Ctx.peek)
-    
+  '@': fn Goto(s, c) c.item.nextReg <- c.args.0 |> int()
+  '(^)': fn(s, c) with s.add() fn() Goto(s, c)
+
+  call: fn(s, c) {
+    inst := s.pop()
+    code := []
+    with std.map(c.args) fn(arg) if arg {
+      '*' -> s.pop()
+      '^' -> s.peek()
+      's' -> s
+      'c' -> c
+      _ -> arg
+    }
+    inst(code...) |> s.add()
   }
 
   // ---
@@ -60,7 +103,7 @@ Prims := {
 
   // ---
 
-  _ioarg: fn _ioarg(s, c, i, h, p) if val := c.args.(i) {
+  _ioarg: fn _ioarg(s, c, i, h, p) if val := (c.args).(i) {
     ? -> s.(std.default(p, 'pop'))()
     _ -> val |> std.default(h, string)()
   }
@@ -88,71 +131,75 @@ Adding := {
     _ -> v
   }
 
-  add: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) + _ioarg(s, c, 1, _intOrFloat)
-  )
+  add: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) + _ioarg(s, c, 1, _intOrFloat)
+
+  qinc: fn(s, c) s.add(s.pop() + 1)
+  inc: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) + 1
 }
 
 Subtr := {
   qsub: fn(s, c) s.add(s.pop() - s.pop())
 
-  sub: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) - _ioarg(s, c, 1, _intOrFloat)
-  )
+  sub: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) - _ioarg(s, c, 1, _intOrFloat)
+
+  dec: fn(s, c) {
+    val := _ioarg(s, c, 0, _intOrFloat) - 1
+    s.add(val)
+  }
 }
 
 Mult := {
   qmlt: fn(s, c) s.add(s.pop() * s.pop())
 
-  mlt: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) * _ioarg(s, c, 1, _intOrFloat)
-  )
+  mlt: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) * _ioarg(s, c, 1, _intOrFloat)
 
-  _qd_b4: fn _qd_b4(x) x |> pow(2) / 4
-  _hkmlt: fn _hkmlt(a, b) _qd_b4(a + b) - _qd_b4(a - b)
+  _hksqr: hksqr
+  qhksqr: fn(s, c) s.add(s.pop() |> hksqr())
 
-  qhkmlt: fn(s, c) _hkmlt(s.pop(), s.pop()) |> s.add()
-  hkmlt: fn(s, c) _hkmlt(
+  hksqr: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) |> hksqr()
+
+  _hkcub: hkcub
+  qhkcub: fn(s, c) s.add(s.pop() |> hksqr())
+
+  hkcub: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) |> hkcub()
+
+  _qd_b4: qd_b4
+  _hkmlt: hkmlt
+
+  qhkmlt: fn(s, c) hkmlt(s.pop(), s.pop()) |> s.add()
+  hkmlt: fn(s, c) hkmlt(
     _ioarg(s, c, 0, _intOrFloat)
     _ioarg(s, c, 1, _intOrFloat)
   ) |> s.add()
 }
 
 Div := {
-  div: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) / _ioarg(s, c, 1, _intOrFloat)
-  )
+  div: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) / _ioarg(s, c, 1, _intOrFloat)
 
-  _exp: fn _exp(x) pow(math.E, x)
-  exp: fn(s, c) s.add(s.pop() |> _exp())
+  _exp: exp
+  exp: fn(s, c) s.add(s.pop() |> exp())
 
-  _qdiv: fn _qdiv(a, b) {
-    _exp(log(a) - log(b))
-  }
+  _qdiv: qdiv
 
-  hkdiv: fn(s, c) _qdiv(
+  hkdiv: fn(s, c) qdiv(
     _ioarg(s, c, 0, _intOrFloat)
     _ioarg(s, c, 1, _intOrFloat)
   ) |> s.add()
 
-  qhkdiv: fn(s, c) _qdiv(
+  qhkdiv: fn(s, c) qdiv(
     s.pop()
     s.pop()
   ) |> s.add()
 }
 
 Pow := {
-  pow: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) |> pow(_ioarg(s, c, 1, _intOrFloat))
-  )
+  pow: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) |> pow(_ioarg(s, c, 1, _intOrFloat))
 
-  qpow: fn(s, c) s.add(
-    s.pop() |> pow(s.pop())
-  )
+  qpow: fn(s, c) with s.add() s.pop() |> pow(s.pop())
 
   _hkpow: fn _hkpow(a, b) if b {
     0 -> 1
-    _ -> _hkmlt(a, _hkpow(a, b - 1))
+    _ -> hkmlt(a, _hkpow(a, b - 1))
   }
 
   qhkpow: fn(s, c) _hkpow(s.pop(), s.pop()) |> s.add()
@@ -169,9 +216,7 @@ Pow := {
 Mod := {
   qmod: fn(s, c) s.add(s.pop() % s.pop())
 
-  mod: fn(s, c) s.add(
-    _ioarg(s, c, 0) % _ioarg(s, c, 1)
-  )
+  mod: fn(s, c) with s.add() _ioarg(s, c, 0) % _ioarg(s, c, 1)
 }
 
 Trig := {
@@ -186,130 +231,92 @@ Trig := {
 }
 
 Sqrt := {
-  qsqrt: fn(s, c) s.add(
-    s.pop() |> math.sqrt()
-  )
+  qsqrt: fn(s, c) with s.add() s.pop() |> math.sqrt()
 
-  sqrt: fn(s, c) s.add(
-    math.sqrt(_ioarg(s, c, 0, _intOrFloat))
-  )
+  sqrt: fn(s, c) with s.add() math.sqrt(_ioarg(s, c, 0, _intOrFloat))
 
   _hksqrt: fn _hksqrt(n) if n >= 0 -> _hkpow(n, 0.5)
-  hksqrt: fn(s, c) s.add(
-    _hksqrt(_ioarg(s, c, 0, _intOrFloat))
-  )
+  hksqrt: fn(s, c) with s.add() _hksqrt(_ioarg(s, c, 0, _intOrFloat))
 
-  qhksqrt: fn(s, c) s.add(
-    _hksqrt(s.pop())
-  )
+  qhksqrt: fn(s, c) with s.add() _hksqrt(s.pop())
 }
 
 Abs := {
-  abs: fn(s, c) s.add(
-    math.abs(_ioarg(s, c, 0, _intOrFloat))
-  )
+  abs: fn(s, c) with s.add() math.abs(_ioarg(s, c, 0, _intOrFloat))
 
-  qabs: fn(s, c) s.add(
-    math.abs(s.pop())
-  )
+  qabs: fn(s, c) with s.add() math.abs(s.pop())
 
-  hkabs: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) |> _hkpow(2) |> _hksqrt()
-  )
+  hkabs: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) |> _hkpow(2) |> _hksqrt()
 
-  qhkabs: fn(s, c) s.add(
-    _hkpow(s.pop(), 2) |> _hksqrt()
-  )
+  qhkabs: fn(s, c) with s.add() _hkpow(s.pop(), 2) |> _hksqrt()
 }
 
 Bitwise := {
-  band: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) & _ioarg(s, c, 1, _intOrFloat)
-  )
+  band: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) & _ioarg(s, c, 1, _intOrFloat)
 
-  qband: fn(s, c) s.add(
-    s.pop() & s.pop()
-  )
+  qband: fn(s, c) with s.add() s.pop() & s.pop()
 
   // ---
 
-  bor: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) | _ioarg(s, c, 1, _intOrFloat)
-  )
+  bor: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) | _ioarg(s, c, 1, _intOrFloat)
 
-  qbor: fn(s, c) s.add(
-    s.pop() | s.pop()
-  )
+  qbor: fn(s, c) with s.add() s.pop() | s.pop()
 
   // ---
 
-  bxor: fn(s, c) s.add(
-    _ioarg(s, c, 0, _intOrFloat) ^ _ioarg(s, c, 1, _intOrFloat)
-  )
+  bxor: fn(s, c) with s.add() _ioarg(s, c, 0, _intOrFloat) ^ _ioarg(s, c, 1, _intOrFloat)
 
-  qbxor: fn(s, c) s.add(
-    s.pop() ^ s.pop()
-  )
+  qbxor: fn(s, c) with s.add() s.pop() ^ s.pop()
 
   // ---
 
-  qlshift: fn(s, c) {
-    positions := s.pop()
-    value := s.pop()
-    result := value * pow(2, positions)
-    s.add(result)
-  }
+  qlshift: fn(s, c) leftShift(
+    s.pop()
+    s.pop()
+  ) |> s.add()
 
-  lshift: fn(s, c) {
-    value := _ioarg(s, c, 0, _intOrFloat)
-    positions := _ioarg(s, c, 1, _intOrFloat)
-    result := value * pow(2, positions)
-    s.add(result)
-  }
+  lshift: fn(s, c) leftShift(
+    _ioarg(s, c, 0, _intOrFloat)
+    _ioarg(s, c, 1, _intOrFloat)
+  ) |> s.add()
 
-  qrshift: fn(s, c) {
-    positions := s.pop()
-    value := s.pop()
-    result := value / pow(2, positions)
-    s.add(result)
-  }
+  qrshift: fn(s, c) rightShift(
+    s.pop()
+    s.pop()
+  ) |> s.add()
 
-  rshift: fn(s, c) {
-    value := _ioarg(s, c, 0, _intOrFloat)
-    positions := _ioarg(s, c, 1, _intOrFloat)
-    result := value / pow(2, positions)
-    s.add(result)
-  }
+  rshift: fn(s, c) rightShift(
+    _ioarg(s, c, 0, _intOrFloat)
+    _ioarg(s, c, 1, _intOrFloat)
+  ) |> s.add()
 
   // ---
 
-  hklshift: fn(s, c) {
-    value := _ioarg(s, c, 0, _intOrFloat)
-    positions := _ioarg(s, c, 1, _intOrFloat)
-    result := _hkmlt(value, _hkpow(2, positions))
-    s.add(result)
-  }
+  hklshift: fn(s, c) hkmlt(
+    _ioarg(s, c, 0, _intOrFloat)
+    _hkpow(
+      2
+      _ioarg(s, c, 1, _intOrFloat)
+    )
+  ) |> s.add()
 
-  qhklshift: fn(s, c) {
-    positions := s.pop()
-    value := s.pop()
-    result := _hkmlt(value, _hkpow(2, positions))
-    s.add(result)
-  }
+  qhklshift: fn(s, c) hkmlt(
+    s.pop()
+    _hkpow(2, s.pop())
+  ) |> s.add()
 
-  hkrshift: fn(s, c) {
-    value := _ioarg(s, c, 0, _intOrFloat)
-    positions := _ioarg(s, c, 1, _intOrFloat)
-    result := value / _hkpow(2, positions)
-    s.add(result)
-  }
+  hkrshift: fn(s, c) hkdiv(
+    _ioarg(s, c, 0, _intOrFloat)
+    _hkpow(
+      2
+      _ioarg(s, c, 1, _intOrFloat)
+    )
+  ) |> s.add()
 
-  qhkrshift: fn(s, c) {
-    positions := s.pop()
-    value := s.pop()
-    result := value / _hkpow(2, positions)
-    s.add(result)
-  }
+  qhkrshift: fn(s, c) hkdiv(
+    s.pop()
+    _hkpow(2, s.pop())
+  ) |> s.add()
 }
 
 Hex := {
@@ -336,7 +343,7 @@ Math := std.merge(
 // @@ Mechanics
 
 BoolOps := {
-  _bool: fn(a) if a {
+  _bool: fn _bool(a) if a {
     true
     1 -> true
 
@@ -344,29 +351,32 @@ BoolOps := {
     0 -> false
   }
 
-  eq: fn(s, c) s.add(
-    _ioarg(s, c, 0, _bool) = _ioarg(s, c, 1, _bool)
-  )
+  eq: fn(s, c) with s.add() _ioarg(s, c, 0, _bool) = _ioarg(s, c, 1, _bool)
+  qeq: fn(s, c) with s.add() s.pop() = s.pop()
 
-  qeq: fn(s, c) s.add(
-    s.pop() = s.pop()
-  )
+  neq: fn(s, c) with s.add() _ioarg(s, c, 0, _bool) != _ioarg(s, c, 1, _bool)
+  qneq: fn(s, c) with s.add() s.pop() != s.pop()
 
-  neq: fn(s, c) s.add(
-    _ioarg(s, c, 0, _bool) != _ioarg(s, c, 1, _bool)
-  )
+  not: fn(s, c) with s.add() !_ioarg(s, c, 0, _bool)
+  qnot: fn(s, c) with s.add() !s.pop()
 
-  qneq: fn(s, c) s.add(
-    s.pop() != s.pop()
-  )
+  and: fn(s, c) s.add(_ioarg(s, c, 0, _bool) & _ioarg(s, c, 1, _bool))
+  qand: fn(s, c) s.add(s.pop() & s.pop())
 
-  not: fn(s, c) s.add(
-    !_ioarg(s, c, 0, _bool)
-  )
+  ora: fn(s, c) s.add(_ioarg(s, c, 0, _bool) | _ioarg(s, c, 1, _bool))
+  qora: fn(s, c) s.add(s.pop() | s.pop())
 
-  qnot: fn(s, c) s.add(
-    !s.pop()
-  )
+  eor: fn(s, c) {
+    lhs := _ioarg(s, c, 0, _bool)
+    rhs := _ioarg(s, c, 0, _bool)
+    s.add((lhs & !rhs) | (!lhs & rhs))
+  }
+
+  qeor: fn(s, c) {
+    lhs := s.pop() |> _bool()
+    rhs := s.pop() |> _bool()
+    s.add((lhs & !rhs) | (!lhs & rhs))
+  }
 }
 
 MemOps := {
@@ -439,6 +449,46 @@ MemOps := {
     key := _ioarg(s, c, 0)
     s.add(s.Registry.(key))
   }
+
+  regcl: fn(s, c) s.regGC()
+}
+
+TransferOps := {
+  tax: fn(s, c) {
+    xRegister := s.pop()
+    aRegister := xRegister
+    s.add(aRegister)
+  },
+
+  tay: fn(s, c) {
+    yRegister := s.pop()
+    aRegister := yRegister
+    s.add(aRegister)
+  },
+
+  txa: fn(s, c) {
+    aRegister := s.pop()
+    xRegister := aRegister
+    s.add(xRegister)
+  },
+
+  tya: fn(s, c) {
+    aRegister := s.pop()
+    yRegister := aRegister
+    s.add(yRegister)
+  },
+
+  tsx: fn(s, c) {
+    xRegister := s.pop()
+    stackPointer := xRegister
+    s.add(stackPointer)
+  },
+
+  txs: fn(s, c) {
+    stackPointer := s.pop()
+    xRegister := stackPointer
+    s.add(xRegister)
+  }
 }
 
 CastOps := {
@@ -449,9 +499,7 @@ CastOps := {
 }
 
 StringOps := {
-  concat: fn(s, c) s.add(
-    _ioarg(s, c, 0, string) << _ioarg(s, c, 1, string)
-  )
+  concat: fn(s, c) with s.add() _ioarg(s, c, 0, string) << _ioarg(s, c, 1, string)
 
   substr: fn(s, c) {
     str := _ioarg(s, c, 0, string)
@@ -460,29 +508,107 @@ StringOps := {
     s.add(str.substring(start, end))
   }
 
-  length: fn(s, c) s.add(
-    len(_ioarg(s, c, 0, string))
-  )
+  length: fn(s, c) with s.add() len(_ioarg(s, c, 0, string))
 }
 
 ListOps := {
   map: fn(s, c) {
-    list := _ioarg(s, c, 0)
+    list := _ioarg(s, c, 0, json.parse)
     func := s.pop()
     s.add(std.map(list, func))
   }
 
   filter: fn(s, c) {
-    list := _ioarg(s, c, 0)
+    list := _ioarg(s, c, 0, json.parse)
     func := s.pop()
     s.add(std.filter(list, func))
   }
 
   reduce: fn(s, c) {
-    list := _ioarg(s, c, 0)
+    list := _ioarg(s, c, 0, json.parse)
     func := s.pop()
     initial := _ioarg(s, c, 1)
     s.add(std.reduce(list, func, initial))
+  }
+  
+  // New Operations
+  length: fn(s, c) {
+    list := _ioarg(s, c, 0, json.parse)
+    s.add(len(list))
+  }
+
+  append: fn(s, c) {
+    list := _ioarg(s, c, 0, json.parse)
+    elem := s.pop()
+    list << elem
+    s.add(list)
+  }
+
+  indexOf: fn(s, c) {
+    list := _ioarg(s, c, 0, json.parse)
+    elem := s.pop()
+    index := std.find(list, fn(item) item = elem)
+    s.add(index)
+  }
+
+  contains: fn(s, c) {
+    list := _ioarg(s, c, 0, json.parse)
+    elem := s.pop()
+    exists := std.find(list, fn(item) item = elem) != -1
+    s.add(exists)
+  }
+}
+
+ObjOps := {
+  new: fn(s, c) {
+    properties := _ioarg(s, c, 0, json.parse)
+    obj := std.clone(properties)
+    s.add(obj)
+  }
+
+  get: fn(s, c) {
+    obj := _ioarg(s, c, 0, json.parse)
+    propName := _ioarg(s, c, 1, string)
+    propValue := obj.(propName)
+    s.add(propValue)
+  }
+
+  set: fn(s, c) {
+    obj := _ioarg(s, c, 0, json.parse)
+    propName := _ioarg(s, c, 1, string)
+    propValue := _ioarg(s, c, 2)
+    obj.(propName) <- propValue
+  }
+
+  has: fn(s, c) {
+    obj := _ioarg(s, c, 0, json.parse)
+    propName := _ioarg(s, c, 1, string)
+    exists := obj.(propName) != ?
+    s.add(exists)
+  }
+
+  remove: fn(s, c) {
+    obj := _ioarg(s, c, 0, json.parse)
+    propName := _ioarg(s, c, 1, string)
+    obj.(propName) <- ?
+  }
+
+  keys: fn(s, c) {
+    obj := _ioarg(s, c, 0, json.parse)
+    keys := keys(obj)
+    s.add(keys)
+  }
+
+  values: fn(s, c) {
+    obj := _ioarg(s, c, 0, object)
+    values := std.values(obj)
+    s.add(values)
+  }
+
+  entries: fn(s, c) {
+    obj := _ioarg(s, c, 0, object)
+    entries := std.entries(obj)
+    s.add(entries)
   }
 }
 
@@ -556,30 +682,24 @@ Importing := {
   }
 }
 
-PropAccess := {
-  access: fn access(s, c) {
-    obj := _ioarg(s, c, 0)
-    prop := _ioarg(s, c, 1, string)
-    s.add(obj.(prop))
-  }
-}
-
 Env := std.merge(
+  ReturnAddr
   Prims
+  Stack
   Math
 
   BoolOps
+  MemOps
+  TransferOps
+
+  CastOps
   StringOps
   ListOps
 
-  CastOps
-  MemOps
-
-  Jump
+  ObjOps
   ControlFlow
-
   Memoization
 
+  Jump
   Importing
-  PropAccess
 )
