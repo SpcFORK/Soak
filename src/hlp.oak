@@ -1,0 +1,61 @@
+std := import('std')
+
+
+fn isJSMode?() keys('') != []
+
+
+fn getOakBuiltinName(name) '__oak_' + name
+
+
+fn getOakName(name) getOakBuiltinName('js_' + name)
+
+
+fn getOakBuiltin(target) if isJSMode?() -> {
+  globalThis.(getOakBuiltinName(target))
+}
+
+
+fn getOakTarget(target) if isJSMode?() -> {
+  globalThis.(getOakName(target))
+}
+
+
+fn s(pl) if isJSMode?() {
+  res := string(pl)
+  true -> res.toString()
+  _ -> res
+}
+
+
+fn class!(name) if isJSMode?() -> {
+  with eval() 'class {{ 0 }} {}' |> fmt.format(name) |> s()
+}
+
+
+fn asyncFn!(args...) if isJSMode?() -> {
+  eval('async ()=>{}' |> s()).constructor(asyncFn)
+}
+
+
+// Get the users platform
+fn platform? if isJSMode?() -> if {
+  globalThis.window != ? -> :web
+  (with try() fn() module).error = ? -> :node
+}
+
+
+fn getExporter() if platform?() {
+  :web -> globalThis
+  :node -> module.exports
+  _ -> {{}}
+}
+
+
+fn export!(mod, webProp?) if platform?() {
+  exp := getExporter()
+  :web -> exp.(webProp?) <- mod
+  :node -> Object.assign(exp, mod)
+}
+
+
+// - Spectcow
