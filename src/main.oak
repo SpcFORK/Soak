@@ -172,11 +172,12 @@ fn Soak(Env) Ctx := {
 
   _encodeArr: fn _encodeArr(arr) with std.map(arr) fn(v) v |>
     codepoint() |>
-    toBin() |>
-    str.padStart(8, '0')
+    // toBin() |>
+    std.toHex() |>
+    // str.padStart(8, '0')
+    str.padStart(2, '0')
 
   compile: fn {
-    // The goal of compile is to oredr
     result := ''
 
     with std.map(Ctx.Steps |> std.values()) fn(step) result <<
@@ -196,75 +197,116 @@ fn Soak(Env) Ctx := {
 
 // ---
 // @@ CLI
+if (hlp.isJSMode?() & __Is_Oak_Node) | (args().0 = 'oak') -> {
 
 Cli := cli.parse()
 
+fn CliFull {
+  codes := []
+  args := Cli.args |> std.clone()
+
+  fn recurse() {
+    codes << [
+      args.2
+      args.0 |> int()
+      args.1 |> int()
+    ]
+
+    args <- std.takeLast(args, len(args) - 3)
+    if len(args) >= 3 -> recurse()
+  }
+
+  recurse()
+
+  with std.println() Soak().newLoJit(codes)
+}
+
+fn CliSemi {
+  codes := []
+  args := Cli.args |> std.clone()
+
+  x := 0
+  z := 0
+
+  fn recurse() {
+    codes << [
+      args.0
+      x <- z
+      z <- z + 1
+    ]
+
+    args <- std.takeLast(args, len(args) - 1)
+    if len(args) >= 1 -> recurse()
+  }
+
+  recurse()
+
+  with std.println() Soak().newLoJit(codes)
+}
+
+fn CliInputSemi {
+  ctx := Soak()
+
+  with std.loop() fn(i, break) {
+    std.print('(esc to leave) > ')
+    evt := input()
+
+    if evt.data |> str.lower() {
+      'esc' -> break(0)
+
+      _ -> [evt.data, 0, 1] |>
+        ctx.stepToNode() |>
+        ctx._parseInstruction() |>
+        std.println()
+    }
+  }
+
+  std.println('Ended Repl session.')
+}
+
+fn CliMainHelp std.println('
+Soak CLI    ......
+            ..1 5.
+UGPVM       ..2 0.
+v0          ......
+
+Commands:
+
+  help, ? <thing?>
+    Get help about something
+
+  srepl
+    A REPL
+
+  full <t n code>...
+    Single Line   Full/Triplet set mode
+  semi <code>...
+    Single Track mode
+')
+
+fn CliHelp if Cli.args |> len() > 0 {
+  true -> with std.println('\n') if Cli.args.0 {
+    'help' -> 'Haha, verrrry funny.'
+    '?' -> 'The mini form of help'
+
+    'srepl' -> 'A Semi Mode Repl testing and fun'
+    'full' -> 'Interpreter of instructions in any order'
+    'semi' -> 'Interpreter of instructions'
+  }
+
+  _ -> CliMainHelp()
+}
+
 if Cli.verb {
-  fn CliFull {
-    codes := []
-    args := Cli.args |> std.clone()
-
-    fn recurse() {
-      codes << [
-        args.2
-        args.0 |> int()
-        args.1 |> int()
-      ]
-
-      args <- std.takeLast(args, len(args) - 3)
-      if len(args) >= 3 -> recurse()
-    }
-
-    recurse()
-
-    with std.println() Soak().newLoJit(codes)
-  }
-
-  fn CliSemi {
-    codes := []
-    args := Cli.args |> std.clone()
-
-    x := 0
-    z := 0
-
-    fn recurse() {
-      codes << [
-        args.0
-        x <- z
-        z <- z + 1
-      ]
-
-      args <- std.takeLast(args, len(args) - 1)
-      if len(args) >= 1 -> recurse()
-    }
-
-    recurse()
-
-    with std.println() Soak().newLoJit(codes)
-  }
-
-  fn CliInputSemi {
-    ctx := Soak()
-
-    with std.loop() fn(i, break) {
-      std.print('(esc to leave) > ')
-      evt := input()
-      if evt.data |> str.lower() {
-        'esc' -> break(0)
-        _ -> [evt.data, 0, 1] |>
-          ctx.stepToNode() |>
-          ctx._parseInstruction() |>
-          std.println()
-      }
-    }
-
-    std.println('Ended Repl session.')
-  }
+  'help', '?' -> CliHelp()
 
   'srepl' -> CliInputSemi()
 
   'full' -> CliFull()
   'semi' -> CliSemi()
 }
+
+}
+// --- CLI
 
 hlp.export!({ Soak: Soak }, 'Soak')
