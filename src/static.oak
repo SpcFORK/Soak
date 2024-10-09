@@ -63,8 +63,10 @@ Prims := {
   't': fn(s, c) true |> s.add()
   'f': fn(s, c) false |> s.add()
 
-  '#': fn(s, c) c.args.0 |> int() |> s.add()
   '$': fn(s, c) c.args.0 |> s.add()
+  ':': fn(s, c) c.args.0 |> atom() |> s.add()
+  '#': fn(s, c) c.args.0 |> int() |> s.add()
+  '#.': fn(s, c) c.args.0 |> float() |> s.add()
 
   '()': fn(s, c) s.add(fn {})
 
@@ -493,7 +495,10 @@ TransferOps := {
 
 CastOps := {
   toint: fn(s, c) s.add(_ioarg(s, c, 0) |> int())
+  tosym: fn(s, c) s.add(_ioarg(s, c, 0) |> atom())
   tostr: fn(s, c) s.add(_ioarg(s, c, 0) |> string())
+  tochr: fn(s, c) s.add(_ioarg(s, c, 0) |> char())
+  topoint: fn(s, c) s.add(_ioarg(s, c, 0) |> codepoint())
   tobool: fn(s, c) s.add(_ioarg(s, c, 0) |> bool())
   tofloat: fn(s, c) s.add(_ioarg(s, c, 0) |> float())
 }
@@ -683,6 +688,7 @@ Importing := {
 }
 
 Env := std.merge(
+  Spawning
   ReturnAddr
   Prims
   Stack

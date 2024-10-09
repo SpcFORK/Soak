@@ -1,0 +1,37 @@
+{
+  "name": "soakvm",
+  "version": "1.0.4",
+  "description": "A Universal General Purpose Virtual Machine written in Sakura/Oaklang",
+  "main": "dist/soak.js",
+  "files": [
+    "dist",
+    "test",
+    "src",
+    "main.js",
+    "SPEC.md",
+    "THANKS.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node main.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/spcfork/soak.git"
+  },
+  "keywords": [
+    "vm",
+    "oak",
+    "oaklang",
+    "cli",
+    "binary",
+    "web"
+  ],
+  "author": "SpcFORK",
+  "license": "DWTFYW",
+  "bugs": {
+    "url": "https://github.com/spcfork/soak/issues"
+  },
+  "homepage": "https://github.com/spcfork/soak#readme"
+}
