@@ -1,4 +1,4 @@
-# Soak VM
+# SoakVM
 
 Soak VM is a lightweight virtual machine implementation designed for executing custom bytecode instructions.
 
